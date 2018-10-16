@@ -1,5 +1,5 @@
 # CACTUs-MAML
-Clustering to Automatically Generate Tasks for Unsupervised Model-Agnostic Meta-Learning.
+CACTUs-MAML: Clustering to Automatically Generate Tasks for Unsupervised Model-Agnostic Meta-Learning.
 
 This code was used to produce the CACTUs-MAML results and baselines in the paper [Unsupervised Learning via Meta-Learning](https://arxiv.org/abs/1810.02334).
 
