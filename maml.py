@@ -41,12 +41,12 @@ class MAML:
                 self.dim_hidden = [256, 128, 64, 64]
                 self.forward=self.forward_fc
                 self.construct_weights = self.construct_fc_weights
-        if FLAGS.datasource == 'mnist' or FLAGS.datasource == 'omniglot':
+        if FLAGS.dataset == 'mnist' or FLAGS.dataset == 'omniglot':
             self.channels = 1
         else:
             self.channels = 3
         self.img_size = int(np.sqrt(self.dim_input/self.channels))
-        if FLAGS.datasource not in ['mnist', 'omniglot', 'miniimagenet', 'celeba']:
+        if FLAGS.dataset not in ['mnist', 'omniglot', 'miniimagenet', 'celeba', 'imagenet']:
             raise ValueError('Unrecognized data source.')
 
     def construct_model(self, input_tensors=None, prefix='metatrain_'):
@@ -179,7 +179,7 @@ class MAML:
             if FLAGS.metatrain_iterations > 0:
                 optimizer = tf.train.AdamOptimizer(self.meta_lr)
                 self.gvs = gvs = optimizer.compute_gradients(self.total_losses2[FLAGS.num_updates-1])
-                if FLAGS.datasource == 'miniimagenet' or FLAGS.datasource == 'celeba':
+                if FLAGS.dataset == 'miniimagenet' or FLAGS.dataset == 'celeba' or FLAGS.dataset == 'imagenet':
                     gvs = [(tf.clip_by_value(grad, -10, 10), var) for grad, var in gvs]
                 self.metatrain_op = optimizer.apply_gradients(gvs)
         else:
@@ -237,7 +237,7 @@ class MAML:
         weights['b3'] = tf.Variable(tf.zeros([self.dim_hidden]))
         weights['conv4'] = tf.get_variable('conv4', [k, k, self.dim_hidden, self.dim_hidden], initializer=conv_initializer, dtype=dtype)
         weights['b4'] = tf.Variable(tf.zeros([self.dim_hidden]))
-        if FLAGS.datasource == 'miniimagenet' or FLAGS.datasource == 'celeba':
+        if FLAGS.dataset == 'miniimagenet' or FLAGS.dataset == 'celeba' or FLAGS.dataset == 'imagenet':
             # assumes max pooling
             weights['w5'] = tf.get_variable('w5', [self.dim_hidden*5*5, self.dim_output_train], initializer=fc_initializer)
             weights['b5'] = tf.Variable(tf.zeros([self.dim_output_train]), name='b5')
@@ -256,7 +256,7 @@ class MAML:
         hidden2 = conv_block(hidden1, weights['conv2'], weights['b2'], reuse, scope+'1')
         hidden3 = conv_block(hidden2, weights['conv3'], weights['b3'], reuse, scope+'2')
         hidden4 = conv_block(hidden3, weights['conv4'], weights['b4'], reuse, scope+'3')
-        if FLAGS.datasource == 'miniimagenet' or FLAGS.datasource == 'celeba':
+        if FLAGS.dataset == 'miniimagenet' or FLAGS.dataset == 'celeba' or FLAGS.dataset == 'imagenet':
             # last hidden layer is 6x6x64-ish, reshape to a vector
             hidden4 = tf.reshape(hidden4, [-1, np.prod([int(dim) for dim in hidden4.get_shape()[1:]])])
         else:

@@ -6,17 +6,18 @@ import numpy as np
 import random
 import tensorflow as tf
 
-from data_generator import DataGenerator
+from data_generator import DataGenerator, DataGeneratorImageNet
 from maml import MAML
 from tensorflow.python.platform import flags
 from tensorflow.python import debug as tf_debug
 from tqdm import tqdm
 import os
+import ipdb
 
 FLAGS = flags.FLAGS
 
 ## Dataset/method options
-flags.DEFINE_string('datasource', 'omniglot', 'omniglot or mnist or miniimagenet or celeba')
+flags.DEFINE_string('dataset', 'omniglot', 'omniglot or mnist or miniimagenet or celeba')
 flags.DEFINE_integer('num_encoding_dims', -1, 'of unsupervised representation learning method')
 flags.DEFINE_string('encoder', 'acai', 'acai or bigan or deepcluster or infogan')
 
@@ -41,6 +42,7 @@ flags.DEFINE_boolean('scaled_encodings', True, 'if True, use randomly scaled enc
 flags.DEFINE_boolean('on_encodings', False, 'if True, train MAML on top of encodings')
 flags.DEFINE_integer('num_hidden_layers', 2, 'number of mlp hidden layers')
 flags.DEFINE_integer('num_parallel_calls', 8, 'for loading data')
+flags.DEFINE_integer('gpu', 7, 'CUDA_VISIBLE_DEVICES=')
 
 ## Model options
 flags.DEFINE_string('norm', 'batch_norm', 'batch_norm, layer_norm, or None')
@@ -64,6 +66,11 @@ flags.DEFINE_string('suffix', '', 'suffix for an exp_string')
 flags.DEFINE_bool('from_scratch', False, 'fast-adapt from scratch')
 flags.DEFINE_integer('num_eval_tasks', 1000, 'number of tasks to meta-test on')
 
+# Imagenet
+flags.DEFINE_string('input_type', 'images_84x84', 'features or features_processed or images_fullsize or images_84x84')
+flags.DEFINE_string('data_dir', '/data3/kylehsu/data', 'location of data')
+
+# os.environ["CUDA_VISIBLE_DEVICES"] = str(FLAGS.gpu)
 logdir = FLAGS.logdir
 
 def train(model, saver, sess, exp_string, data_generator, resume_itr=0):
@@ -185,9 +192,14 @@ def main():
 
     sess = tf.InteractiveSession()
 
-    data_generator = DataGenerator(FLAGS.inner_update_batch_size_train + FLAGS.outer_update_batch_size,
-                                   FLAGS.inner_update_batch_size_val + FLAGS.outer_update_batch_size,
-                                   FLAGS.meta_batch_size)
+    if not FLAGS.dataset == 'imagenet':
+        data_generator = DataGenerator(FLAGS.inner_update_batch_size_train + FLAGS.outer_update_batch_size,
+                                       FLAGS.inner_update_batch_size_val + FLAGS.outer_update_batch_size,
+                                       FLAGS.meta_batch_size)
+    else:
+        data_generator = DataGeneratorImageNet(FLAGS.inner_update_batch_size_train + FLAGS.outer_update_batch_size,
+                                               FLAGS.inner_update_batch_size_val + FLAGS.outer_update_batch_size,
+                                               FLAGS.meta_batch_size)
 
     dim_output_train = data_generator.dim_output_train
     dim_output_val = data_generator.dim_output_val

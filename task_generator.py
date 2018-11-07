@@ -125,7 +125,7 @@ class TaskGenerator(object):
         else:
             n_clusters_list = [FLAGS.num_clusters_test]
         assert len(encodings_list) * len(n_clusters_list) == FLAGS.num_partitions
-        if FLAGS.datasource == 'celeba' or FLAGS.num_partitions != 1:
+        if FLAGS.dataset == 'celeba' or FLAGS.num_partitions != 1:
             n_init = 1  # so it doesn't take forever
         else:
             n_init = 10
