@@ -296,6 +296,16 @@ class DataGeneratorImageNet(object):
         print('Number of clusters/classes: {}'.format(len(partition.keys())))
         partitions = [partition]
 
+        def sample_task():
+            for i in range(num_tasks):
+                train_ind, train_labels, test_ind, test_labels = task_generator.get_task(partition=partition)
+                train_ind, train_labels, test_ind, test_labels = np.array(train_ind), np.array(train_labels), \
+                                                                 np.array(test_ind), np.array(test_labels)
+                yield train_ind, train_labels, test_ind, test_labels
+
+        def make_dict(train_ind, train_labels, test_ind, test_labels):
+            return {"train_indices": train_ind, "train_labels": train_labels, "test_indices": test_ind, "test_labels": test_labels}
+
         def preprocess_image(file_path):
             image_string = tf.read_file(file_path)
             image = tf.image.decode_jpeg(image_string, channels=3)
@@ -303,7 +313,7 @@ class DataGeneratorImageNet(object):
             return image_processed
 
         def preprocess_feature(file_path):
-            return tf.py_func(np.load, [file_path], [tf.float32])
+            return tf.py_func(lambda file_path: np.load(file_path.decode('utf-8')), [file_path], tf.float32)
 
         preprocess_func = {'images_84x84': preprocess_image, 'features': preprocess_feature}[FLAGS.input_type]
         ind_to_file_path_ph = tf.placeholder_with_default(file_paths, shape=len(file_paths))
@@ -318,31 +328,41 @@ class DataGeneratorImageNet(object):
             inputs = tf.concat((task['train_inputs'], task['test_inputs']), axis=0)
             labels = tf.concat((task['train_labels'], task['test_labels']), axis=0)
             return inputs, labels
+        #
+        # tasks = task_generator.get_tasks(num_tasks=num_tasks, partitions=partitions)
+        # train_ind, train_labels, test_ind, test_labels = zip(*tasks)
+        #
+        # train_ind, train_labels, test_ind, test_labels = np.array(train_ind), np.array(train_labels), \
+        #                                                  np.array(test_ind), np.array(test_labels)
+        # train_ind_ph = tf.placeholder(dtype=tf.int64, shape=train_ind.shape)
+        # train_labels_ph = tf.placeholder(dtype=tf.int64, shape=train_labels.shape)
+        # test_ind_ph = tf.placeholder(dtype=tf.int64, shape=test_ind.shape)
+        # test_labels_ph = tf.placeholder(dtype=tf.int64, shape=test_labels.shape)
+        # dataset = tf.data.Dataset.from_tensor_slices(
+        #     {"train_indices": train_ind_ph, "train_labels": train_labels_ph,
+        #      "test_indices": test_ind_ph, "test_labels": test_labels_ph})
+        # dataset = dataset.map(map_func=gather_preprocess, num_parallel_calls=FLAGS.num_parallel_calls)
+        # dataset = dataset.map(map_func=stack, num_parallel_calls=FLAGS.num_parallel_calls)
+        # dataset = dataset.batch(batch_size=self.batch_size)
+        # dataset = dataset.prefetch(4)
+        # dataset = dataset.repeat()
+        # iterator = dataset.make_initializable_iterator()
+        # inputs_batch, labels_batch = iterator.get_next()
+        #
+        # # sess = tf.InteractiveSession()
+        # iterator.initializer.run(feed_dict={train_ind_ph: train_ind,
+        #                                     train_labels_ph: train_labels,
+        #                                     test_ind_ph: test_ind,
+        #                                     test_labels_ph: test_labels})
 
-        tasks = task_generator.get_tasks(num_tasks=num_tasks, partitions=partitions)
-        train_ind, train_labels, test_ind, test_labels = zip(*tasks)
-
-        train_ind, train_labels, test_ind, test_labels = np.array(train_ind), np.array(train_labels), \
-                                                         np.array(test_ind), np.array(test_labels)
-        train_ind_ph = tf.placeholder(dtype=tf.int64, shape=train_ind.shape)
-        train_labels_ph = tf.placeholder(dtype=tf.int64, shape=train_labels.shape)
-        test_ind_ph = tf.placeholder(dtype=tf.int64, shape=test_ind.shape)
-        test_labels_ph = tf.placeholder(dtype=tf.int64, shape=test_labels.shape)
-        dataset = tf.data.Dataset.from_tensor_slices(
-            {"train_indices": train_ind_ph, "train_labels": train_labels_ph,
-             "test_indices": test_ind_ph, "test_labels": test_labels_ph})
+        dataset = tf.data.Dataset.from_generator(sample_task, output_types=(tf.int64, tf.int64, tf.int64, tf.int64))
+        dataset = dataset.map(map_func=make_dict, num_parallel_calls=1)
         dataset = dataset.map(map_func=gather_preprocess, num_parallel_calls=FLAGS.num_parallel_calls)
         dataset = dataset.map(map_func=stack, num_parallel_calls=FLAGS.num_parallel_calls)
         dataset = dataset.batch(batch_size=self.batch_size)
         dataset = dataset.prefetch(4)
         dataset = dataset.repeat()
-        iterator = dataset.make_initializable_iterator()
+        iterator = dataset.make_one_shot_iterator()
         inputs_batch, labels_batch = iterator.get_next()
-
-        # sess = tf.InteractiveSession()
-        iterator.initializer.run(feed_dict={train_ind_ph: train_ind,
-                                            train_labels_ph: train_labels,
-                                            test_ind_ph: test_ind,
-                                            test_labels_ph: test_labels})
 
         return inputs_batch, labels_batch

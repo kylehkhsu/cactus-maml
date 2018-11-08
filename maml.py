@@ -38,8 +38,9 @@ class MAML:
                 self.forward = self.forward_conv
                 self.construct_weights = self.construct_conv_weights
             else:
-                self.dim_hidden = [256, 128, 64, 64]
-                self.forward=self.forward_fc
+                self.dim_hidden = [1024, 512, 256, 128]
+                print('hidden layers: {}'.format(self.dim_hidden))
+                self.forward = self.forward_fc
                 self.construct_weights = self.construct_fc_weights
         if FLAGS.dataset == 'mnist' or FLAGS.dataset == 'omniglot':
             self.channels = 1
@@ -214,11 +215,13 @@ class MAML:
         return weights
 
     def forward_fc(self, inp, weights, prefix, reuse=False):
-        assert FLAGS.num_classes_train == FLAGS.num_classes_val, "Different numbers of classes for meta-training and meta-val not implemented for fc model"
         hidden = normalize(tf.matmul(inp, weights['w1']) + weights['b1'], activation=tf.nn.relu, reuse=reuse, scope='0')
         for i in range(1,len(self.dim_hidden)):
             hidden = normalize(tf.matmul(hidden, weights['w'+str(i+1)]) + weights['b'+str(i+1)], activation=tf.nn.relu, reuse=reuse, scope=str(i+1))
-        return tf.matmul(hidden, weights['w'+str(len(self.dim_hidden)+1)]) + weights['b'+str(len(self.dim_hidden)+1)]
+        logits = tf.matmul(hidden, weights['w'+str(len(self.dim_hidden)+1)]) + weights['b'+str(len(self.dim_hidden)+1)]
+        if 'val' in prefix:
+            logits = tf.gather(logits, tf.range(self.dim_output_val), axis=1)
+        return logits
 
     def construct_conv_weights(self):
         weights = {}
