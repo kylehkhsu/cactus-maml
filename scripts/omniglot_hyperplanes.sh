@@ -2,7 +2,7 @@
 margin=1.2  # you can try 0
 num_partitions=2400 # calculated for 30000 iterations * 8 tasks per iteration / 100 tasks per partition
 python3 main.py \
-    --datasource=omniglot --partition_algorithm=hyperplanes \
+    --dataset=omniglot --partition_algorithm=hyperplanes \
     --save_checkpoints=False \
     --num_classes_train=20 --num_classes_val=5 \
     --inner_update_batch_size_train=1 --inner_update_batch_size_val=5 --outer_update_batch_size=5 \
@@ -15,7 +15,7 @@ python3 main.py \
 for inner_update_batch_size_val in 1 5
 do
     python3 main.py \
-        --datasource=omniglot --partition_algorithm=hyperplanes \
+        --dataset=omniglot --partition_algorithm=hyperplanes \
         --save_checkpoints=False \
         --num_classes_train=20 --num_classes_val=5 \
         --inner_update_batch_size_train=1 --inner_update_batch_size_val=${inner_update_batch_size_val} --outer_update_batch_size=5  \

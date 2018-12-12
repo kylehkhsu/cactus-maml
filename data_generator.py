@@ -119,6 +119,8 @@ class DataGenerator(object):
                 partitions = task_generator.get_partitions_hyperplanes(encodings=Z, num_splits=num_splits,
                                                                        margin=margin, num_partitions=num_partitions)
             elif partition_algorithm == 'kmeans':
+                if FLAGS.on_pixels:
+                    Z = np.copy(X)
                 print('Using {} k-means based partition(s) of encoding space to create classes'.format(num_partitions))
                 partitions = task_generator.get_partitions_kmeans(encodings=Z, train=train)
             else:
@@ -191,8 +193,8 @@ class DataGeneratorImageNet(object):
 
         if FLAGS.input_type == 'images_84x84':
             self.dim_input = 84 * 84 * 3
-        # elif FLAGS.input_type == 'images_fullsize':
-        #     self.dim_input = 224 * 224 * 3  #TODO
+        elif FLAGS.input_type == 'images_224x224':
+            self.dim_input = 224 * 224 * 3
         elif FLAGS.input_type == 'features':
             self.dim_input = 4096
         elif FLAGS.input_type == 'features_processed':
@@ -223,30 +225,44 @@ class DataGeneratorImageNet(object):
         # split imagenet training into miniimagenet splits
         miniimagenet_splits_dir = os.path.join(FLAGS.data_dir, 'imagenet', 'miniimagenet_splits')
         split_to_classes = dict()
-        for split in ['val', 'test']:
+        miniimagenet_split_to_classes = dict()
+        for split in ['train', 'val', 'test']:
             with open(os.path.join(miniimagenet_splits_dir, split + '.csv')) as f:
                 classes = set()
                 next(f)
                 for line in f:
                     cls = line[line.find(',') + 1: line.find('\n')]
                     classes.add(cls)
-            split_to_classes[split] = classes
-        globals().update(locals())  # hack to get around comprehension scoping issue
+            miniimagenet_split_to_classes[split] = classes
+
+        for split in ['val', 'test']:
+            split_to_classes[split] = miniimagenet_split_to_classes[split]
+
+        split_to_classes['miniimagenet_train'] = miniimagenet_split_to_classes['train']
+        # globals().update(locals())  # hack to get around comprehension scoping issue
         train_classes = set(class_list) - (split_to_classes['val'] | split_to_classes['test'])
         split_to_classes['train'] = train_classes
 
-        with open(file=os.path.join(FLAGS.data_dir, 'imagenet', 'clusters', 'train.json'), mode='r') as f:
-            name_to_cluster_train = json.load(fp=f)
-        assert np.all(np.unique(list(name_to_cluster_train.values())) == np.arange(10000))
+        if FLAGS.num_clusters == -1:
+            cluster_files = ['train_k500.json', 'train_k1000.json', 'train_k10000.json']
+        else:
+            cluster_files = ['train_k{}.json'.format(FLAGS.num_clusters)] + \
+                            ['train_k{}_{}.json'.format(FLAGS.num_clusters, i) for i in range(1, FLAGS.num_partitions)]
+        print('cluster_files: ', cluster_files)
+        name_to_cluster_train_list = []
+        for cluster_file in cluster_files:
+            with open(file=os.path.join(FLAGS.data_dir, 'imagenet', 'clusters', cluster_file), mode='r') as f:
+                name_to_cluster_train_list.append(json.load(fp=f))
 
         split_to_path_to_info_dict = defaultdict(dict)
         for split, classes in split_to_classes.items():
-            for class_ind, cls in enumerate(classes):
+            for class_ind, cls in enumerate(tqdm(classes)):
                 for file_path in class_to_file_paths[cls]:
                     name = file_path[file_path.rfind('/') + 1 : file_path.rfind('.')]
                     info = {'path': file_path, 'class_ind': class_ind, 'class': cls}
                     if split == 'train':
-                        info['cluster_ind'] = name_to_cluster_train[name]
+                        for i, name_to_cluster_train in enumerate(name_to_cluster_train_list):
+                            info['cluster_ind{}'.format(i)] = name_to_cluster_train[name]
                     split_to_path_to_info_dict[split][file_path] = info
         return split_to_path_to_info_dict
 
@@ -254,23 +270,16 @@ class DataGeneratorImageNet(object):
         if train:
             mode = FLAGS.mt_mode
             num_classes = self.num_classes_train
-            num_tasks = FLAGS.metatrain_iterations * self.batch_size
-            num_splits = 1000
-            if FLAGS.num_partitions == -1:
-                num_partitions = num_tasks
-            else:
-                num_partitions = FLAGS.num_partitions
             num_samples_per_class = self.num_samples_per_class_train
             num_train_samples_per_class = FLAGS.inner_update_batch_size_train
             path_to_info_dict = self.split_to_path_to_info_dict['train']
+            miniimagenet_path_to_info_dict = self.split_to_path_to_info_dict['miniimagenet_train']
             print('Setting up tasks for meta-training')
         else:
             mode = FLAGS.mv_mode
             if mode == 'encenc':
                 raise NotImplementedError
             num_tasks = FLAGS.num_eval_tasks
-            num_splits = 100
-            num_partitions = num_tasks
             if FLAGS.test_set:
                 path_to_info_dict = self.split_to_path_to_info_dict['test']
             else:
@@ -285,20 +294,41 @@ class DataGeneratorImageNet(object):
         partition_algorithm = FLAGS.partition_algorithm
         margin = FLAGS.margin
 
-        # create partition
         file_paths = list(path_to_info_dict.keys())
         file_path_to_ind = {file_path: ind for ind, file_path in enumerate(file_paths)}
-        partition = defaultdict(list)
-        class_ind_key = {'encenc': 'cluster_ind', 'gtgt': 'class_ind'}[mode]
-        for file_path, info in tqdm(path_to_info_dict.items()):
-            partition[info[class_ind_key]].append(file_path_to_ind[file_path])
-        partition = task_generator.clean_partition(partition)
-        print('Number of clusters/classes: {}'.format(len(partition.keys())))
-        partitions = [partition]
+
+        # create partitions
+        partitions = []
+        if not train or not FLAGS.miniimagenet_only or mode == 'semi':
+            num_partitions = len([key for key in list(path_to_info_dict[file_paths[0]].keys()) if 'cluster_ind' in key]) if mode == 'encenc' else 1
+            for i in tqdm(range(num_partitions)):
+                partition = defaultdict(list)
+                class_ind_key = {'encenc': 'cluster_ind{}'.format(i),
+                                 'semi': 'cluster_ind{}'.format(i),
+                                 'gtgt': 'class_ind'}[mode]
+                for file_path, info in tqdm(path_to_info_dict.items()):
+                    partition[info[class_ind_key]].append(file_path_to_ind[file_path])
+                partition = task_generator.clean_partition(partition)
+                partitions.append(partition)
+        if train and (FLAGS.miniimagenet_only or mode == 'semi'):
+            partition = defaultdict(list)
+            class_ind_key = {'semi': 'class_ind',
+                             'gtgt': 'class_ind'}[mode]
+            for file_path, info in tqdm(miniimagenet_path_to_info_dict.items()):
+                partition[info[class_ind_key]].append(file_path_to_ind[file_path])
+            ipdb.set_trace()
+            partitions.append(partition)
+        print('Number of partitions: {}'.format(len(partitions)))
+        print('Average number of clusters/classes: {}'.format(np.mean([len(partition.keys()) for partition in partitions])))
 
         def sample_task():
-            for i in range(num_tasks):
-                train_ind, train_labels, test_ind, test_labels = task_generator.get_task(partition=partition)
+            if mode == 'semi':
+                p = [0.8, 0.2]  # 80% k-means task, 20% miniimagenet ground truth
+            else:
+                p = None
+            while True:
+                i = np.random.choice(len(partitions), replace=False, p=p)
+                train_ind, train_labels, test_ind, test_labels = task_generator.get_task(partition=partitions[i])
                 train_ind, train_labels, test_ind, test_labels = np.array(train_ind), np.array(train_labels), \
                                                                  np.array(test_ind), np.array(test_labels)
                 yield train_ind, train_labels, test_ind, test_labels
@@ -315,7 +345,9 @@ class DataGeneratorImageNet(object):
         def preprocess_feature(file_path):
             return tf.py_func(lambda file_path: np.load(file_path.decode('utf-8')), [file_path], tf.float32)
 
-        preprocess_func = {'images_84x84': preprocess_image, 'features': preprocess_feature}[FLAGS.input_type]
+        preprocess_func = {'images_84x84': preprocess_image,
+                           'images_224x224': preprocess_image,
+                           'features': preprocess_feature}[FLAGS.input_type]
         ind_to_file_path_ph = tf.placeholder_with_default(file_paths, shape=len(file_paths))
 
         def gather_preprocess(task):

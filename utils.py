@@ -23,6 +23,11 @@ def get_images(paths, labels, nb_samples=None, shuffle=True):
         random.shuffle(images)
     return images
 
+def bn_relu_conv_block(inp, conv, bias, reuse, scope, activation=tf.nn.relu):
+    x = inp
+    x = normalize(x, activation, reuse, scope)
+    x = tf.nn.conv2d(x, filter=conv, strides=[1, 1, 1, 1], padding="SAME") + bias
+    return x
 
 # Network helpers
 def conv_block(inp, cweight, bweight, reuse, scope, activation=tf.nn.relu, max_pool_pad='VALID', residual=False):

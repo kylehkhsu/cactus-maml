@@ -12,7 +12,7 @@ python3 main.py \
 #for inner_update_batch_size_val in 1 5 20 50
 #do
 #    python3 main.py \
-#        --datasource=imagenet --input_type=images_84x84 --encoder=deepcluster --partition_algorithm=kmeans \
+#        --dataset=imagenet --input_type=images_84x84 --encoder=deepcluster --partition_algorithm=kmeans \
 #        --save_checkpoints=False --unsupervised=True \
 #        --num_classes_train=5 --num_classes_val=5 \
 #        --inner_update_batch_size_train=1 --inner_update_batch_size_val=${inner_update_batch_size_val} --outer_update_batch_size=5 \

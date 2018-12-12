@@ -4,7 +4,7 @@ num_classes=5
 inner_update_batch_size_val=5
 update_lr=0.1
 python3 main.py \
-    --datasource=omniglot --encoder=acai --num_encoding_dims=256 \
+    --dataset=omniglot --encoder=acai --num_encoding_dims=256 \
     --save_checkpoints=False \
     --num_classes_train=${num_classes} --num_classes_val=${num_classes} --mv_mode=gtgt --meta_batch_size=1 --metatrain_iterations=0 \
     --inner_update_batch_size_train=1 --inner_update_batch_size_val=${inner_update_batch_size_val} --outer_update_batch_size=5 \

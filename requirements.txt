@@ -60,7 +60,6 @@ MarkupSafe==1.0
 matplotlib==2.2.3
 mistune==0.8.3
 moviepy==0.2.3.5
-mpi4py==3.0.0
 mujoco-py==0.5.7
 nbconvert==5.3.1
 nbformat==4.4.0
@@ -106,8 +105,6 @@ simplegeneric==0.8.1
 six==1.11.0
 sklearn==0.0
 tables==3.4.4
-tensorboard==1.10.0
-tensorflow-gpu==1.10.1
 termcolor==1.1.0
 terminado==0.8.1
 testpath==0.3.1

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 python3 main.py \
-    --datasource=omniglot --encoder=acai --partition_algorithm=kmeans \
+    --dataset=omniglot --encoder=acai --partition_algorithm=kmeans \
     --save_checkpoints=False \
     --num_classes_train=20 --num_classes_val=5 \
     --inner_update_batch_size_train=1 --inner_update_batch_size_val=5 --outer_update_batch_size=5 \
@@ -12,7 +12,7 @@ python3 main.py \
 for inner_update_batch_size_val in 1 5
 do
     python3 main.py \
-        --datasource=omniglot --encoder=bigan --partition_algorithm=kmeans \
+        --dataset=omniglot --encoder=bigan --partition_algorithm=kmeans \
         --save_checkpoints=False \
         --num_classes_train=20 --num_classes_val=5 \
         --inner_update_batch_size_train=1 --inner_update_batch_size_val=${inner_update_batch_size_val} --outer_update_batch_size=5 \

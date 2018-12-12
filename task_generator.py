@@ -113,6 +113,17 @@ class TaskGenerator(object):
         return partition, num_failed
 
     def get_partitions_kmeans(self, encodings, train):
+        if FLAGS.on_pixels: # "encodings" are images
+            encodings = np.reshape(encodings, (encodings.shape[0], -1)).astype(np.float32)
+            mean = np.mean(encodings, axis=1)
+            var = np.var(encodings, axis=1)
+            encodings = ((encodings.T - mean.T) / np.sqrt(var.T + 10)).T  # Coates and Ng, 2012
+            cov = np.cov(encodings, rowvar=False)
+            U, S, V = np.linalg.svd(cov)
+            epsilon = 1e-5
+            ZCA = np.dot(U, np.dot(np.diag(1.0/np.sqrt(S + epsilon)), U.T))
+            encodings = np.dot(ZCA, encodings.T).T
+
         encodings_list = [encodings]
         if train:
             if FLAGS.scaled_encodings:
@@ -125,7 +136,7 @@ class TaskGenerator(object):
         else:
             n_clusters_list = [FLAGS.num_clusters_test]
         assert len(encodings_list) * len(n_clusters_list) == FLAGS.num_partitions
-        if FLAGS.dataset == 'celeba' or FLAGS.num_partitions != 1:
+        if FLAGS.dataset == 'celeba' or FLAGS.num_partitions != 1 or FLAGS.on_pixels:
             n_init = 1  # so it doesn't take forever
         else:
             n_init = 10
@@ -137,11 +148,11 @@ class TaskGenerator(object):
         for n_clusters in tqdm(n_clusters_list, desc='get_partitions_kmeans_n_clusters'):
             for encodings in tqdm(encodings_list, desc='get_partitions_kmeans_encodings'):
                 while True:
-                    kmeans = KMeans(n_clusters=n_clusters, init=init, precompute_distances=True, n_jobs=n_init,
+                    kmeans = KMeans(n_clusters=n_clusters, init=init, precompute_distances=True, n_jobs=40,
                                     n_init=n_init, max_iter=3000).fit(encodings)
                     uniques, counts = np.unique(kmeans.labels_, return_counts=True)
                     num_big_enough_clusters = np.sum(counts > self.num_samples_per_class)
-                    if num_big_enough_clusters > 0.75 * n_clusters:
+                    if num_big_enough_clusters > 0.75 * n_clusters or FLAGS.on_pixels:
                         break
                     else:
                         tqdm.write("Too few classes ({}) with greater than {} examples.".format(num_big_enough_clusters,

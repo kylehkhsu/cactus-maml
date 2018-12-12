@@ -43,6 +43,7 @@ flags.DEFINE_boolean('on_encodings', False, 'if True, train MAML on top of encod
 flags.DEFINE_integer('num_hidden_layers', 2, 'number of mlp hidden layers')
 flags.DEFINE_integer('num_parallel_calls', 8, 'for loading data')
 flags.DEFINE_integer('gpu', 7, 'CUDA_VISIBLE_DEVICES=')
+flags.DEFINE_bool('on_pixels', False, 'cluster in pixel-space')
 
 ## Model options
 flags.DEFINE_string('norm', 'batch_norm', 'batch_norm, layer_norm, or None')
@@ -67,15 +68,19 @@ flags.DEFINE_bool('from_scratch', False, 'fast-adapt from scratch')
 flags.DEFINE_integer('num_eval_tasks', 1000, 'number of tasks to meta-test on')
 
 # Imagenet
-flags.DEFINE_string('input_type', 'images_84x84', 'features or features_processed or images_fullsize or images_84x84')
-flags.DEFINE_string('data_dir', '/data3/kylehsu/data', 'location of data')
+flags.DEFINE_string('input_type', 'images_84x84', 'features or features_processed or images_224x224 or images_84x84')
+flags.DEFINE_string('data_dir', './data', 'location of data')
+flags.DEFINE_bool('resnet', False, 'use resnet architecture')
+flags.DEFINE_integer('num_res_blocks', 5, 'number of resnet blocks')
+flags.DEFINE_integer('num_parts_per_res_block', 2, 'number of bn-relu-conv parts in a res block')
+flags.DEFINE_bool('miniimagenet_only', False, 'only miniimagenet classes')
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = str(FLAGS.gpu)
 logdir = FLAGS.logdir
 
 def train(model, saver, sess, exp_string, data_generator, resume_itr=0):
     SUMMARY_INTERVAL = 100
-    SAVE_INTERVAL = 10000
+    SAVE_INTERVAL = 5000
     PRINT_INTERVAL = 100
     TEST_PRINT_INTERVAL = PRINT_INTERVAL*5
 
@@ -250,6 +255,8 @@ def main():
 
     exp_string = ''
     exp_string += '.nu_' + str(FLAGS.num_updates) + '.ilr_' + str(FLAGS.train_update_lr)
+    if FLAGS.meta_lr != 0.001:
+        exp_string += '.olr_' + str(FLAGS.meta_lr)
     if FLAGS.mt_mode != 'gtgt':
         if FLAGS.partition_algorithm == 'hyperplanes':
             exp_string += '.m_' + str(FLAGS.margin)
@@ -285,6 +292,10 @@ def main():
         exp_string += '.nonorm'
     else:
         print('Norm setting not recognized.')
+    if FLAGS.resnet:
+        exp_string += '.res{}parts{}'.format(FLAGS.num_res_blocks, FLAGS.num_parts_per_res_block)
+    if FLAGS.miniimagenet_only:
+        exp_string += '.mini'
     if FLAGS.suffix != '':
         exp_string += '.' + FLAGS.suffix
 

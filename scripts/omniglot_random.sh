@@ -3,7 +3,7 @@ num_classes=5
 num_clusters=500
 num_partitions=2400
 python3 main.py \
-    --datasource=omniglot --partition_algorithm=kmeans --num_encoding_dims=256 --encoder=acai \
+    --dataset=omniglot --partition_algorithm=kmeans --num_encoding_dims=256 --encoder=acai \
     --save_checkpoints=False \
     --num_classes_train=${num_classes} --num_classes_val=${num_classes} \
     --inner_update_batch_size_train=1 --inner_update_batch_size_val=5 --outer_update_batch_size=5 \
@@ -17,7 +17,7 @@ python3 main.py \
 for inner_update_batch_size_val in 1 5
 do
     python3 main.py \
-        --datasource=omniglot --partition_algorithm=kmeans --num_encoding_dims=256 --encoder=acai \
+        --dataset=omniglot --partition_algorithm=kmeans --num_encoding_dims=256 --encoder=acai \
         --save_checkpoints=False \
         --num_classes_train=${num_classes} --num_classes_val=${num_classes} \
         --inner_update_batch_size_train=1 --inner_update_batch_size_val=${inner_update_batch_size_val} --outer_update_batch_size=5  \

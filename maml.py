@@ -9,8 +9,9 @@ except KeyError as e:
     print('WARN: Cannot define MaxPoolGrad, likely already defined for this version of tensorflow: %s' % e,
           file=sys.stderr)
 
+from collections import OrderedDict
 from tensorflow.python.platform import flags
-from utils import xent, conv_block, normalize
+from utils import xent, conv_block, normalize, bn_relu_conv_block
 
 FLAGS = flags.FLAGS
 
@@ -35,8 +36,31 @@ class MAML:
         else:
             if FLAGS.conv:
                 self.dim_hidden = FLAGS.num_filters
-                self.forward = self.forward_conv
-                self.construct_weights = self.construct_conv_weights
+                if FLAGS.resnet:
+                    if FLAGS.input_type == 'images_84x84':
+                        self.forward = self.forward_resnet84
+                        self.construct_weights = self.construct_resnet_weights84
+                        self.num_parts_per_res_block = FLAGS.num_parts_per_res_block
+                        blocks = ['input']
+                        for i in range(FLAGS.num_res_blocks):
+                            blocks.append('res{}'.format(i))
+                            if i != FLAGS.num_res_blocks - 1:
+                                blocks.append('maxpool')
+                        blocks.append('output')
+                        self.blocks = blocks
+                        print('blocks', self.blocks)
+                    elif FLAGS.input_type == 'images_224x224':
+                        self.forward = self.forward_resnet224
+                        self.construct_weights = self.construct_resnet_weights224
+                        assert FLAGS.num_parts_per_res_block == 2
+                        assert FLAGS.num_res_blocks == 4
+                        self.num_parts_per_res_block = FLAGS.num_parts_per_res_block
+                        self.blocks = ['input', 'maxpool', 'res0', 'maxpool', 'res1', 'maxpool', 'res2', 'maxpool', 'res3', 'output']
+                    else:
+                        raise ValueError
+                else:
+                    self.forward = self.forward_conv
+                    self.construct_weights = self.construct_conv_weights
             else:
                 self.dim_hidden = [1024, 512, 256, 128]
                 print('hidden layers: {}'.format(self.dim_hidden))
@@ -49,6 +73,9 @@ class MAML:
         self.img_size = int(np.sqrt(self.dim_input/self.channels))
         if FLAGS.dataset not in ['mnist', 'omniglot', 'miniimagenet', 'celeba', 'imagenet']:
             raise ValueError('Unrecognized data source.')
+
+        # resnet things
+
 
     def construct_model(self, input_tensors=None, prefix='metatrain_'):
         # a: training data for inner gradient, b: test data for meta gradient
@@ -80,6 +107,7 @@ class MAML:
             else:
                 # Define the weights
                 self.weights = weights = self.construct_weights()
+                print(weights.keys())
 
             # outputbs[i] and lossesb[i] is the output and loss after i+1 gradient updates
             lossesa, outputas, lossesb, outputbs = [], [], [], []
@@ -270,3 +298,221 @@ class MAML:
         if 'val' in prefix:
             logits = tf.gather(logits, tf.range(self.dim_output_val), axis=1)
         return logits
+
+    def construct_resnet_weights224(self):
+        weights = OrderedDict()
+        dtype = tf.float32
+
+        conv_initializer = tf.contrib.layers.xavier_initializer_conv2d(dtype=dtype)
+        bias_initializer = tf.zeros_initializer(dtype=dtype)
+        fc_initializer = tf.contrib.layers.xavier_initializer(dtype=dtype)
+        def make_conv_layer_weights(weights, scope, k, filters_in, filters_out, bias=True):
+            weights['{}/conv'.format(scope)] = tf.get_variable('{}/conv'.format(scope), [k, k, filters_in, filters_out], initializer=conv_initializer, dtype=dtype)
+            if bias:
+                weights['{}/bias'.format(scope)] = tf.get_variable('{}/bias'.format(scope), [filters_out], initializer=bias_initializer, dtype=dtype)
+        def make_fc_layer_weights(weights, scope, dims_in, dims_out):
+            weights['{}/fc'.format(scope)] = tf.get_variable('{}/fc'.format(scope), [dims_in, dims_out], initializer=fc_initializer, dtype=dtype)
+            weights['{}/bias'.format(scope)] = tf.get_variable('{}/bias'.format(scope), [dims_out], initializer=bias_initializer, dtype=dtype)
+        for block_name in self.blocks:
+            if block_name == 'input':
+                make_conv_layer_weights(weights, block_name, k=7, filters_in=self.channels, filters_out=64)
+            elif 'res' in block_name:
+                j = int(block_name[-1])
+                last_block_filter = 64 if j == 0 else 64 * 2 ** (j-1)
+                this_block_filter = 64 if j == 0 else last_block_filter * 2
+                print(block_name, last_block_filter, this_block_filter)
+                make_conv_layer_weights(weights, '{}/shortcut'.format(block_name), k=1, filters_in=last_block_filter,
+                                        filters_out=this_block_filter, bias=False)
+                for i in range(self.num_parts_per_res_block):
+                    make_conv_layer_weights(weights, '{}/part{}'.format(block_name, i), k=3,
+                                            filters_in=last_block_filter if i == 0 else this_block_filter,
+                                            filters_out=this_block_filter)
+            elif block_name == 'output':
+                make_fc_layer_weights(weights, block_name, dims_in=512, dims_out=self.dim_output_train)
+        return weights
+
+    def construct_resnet_weights84(self):
+        weights = OrderedDict()
+        dtype = tf.float32
+
+        conv_initializer = tf.contrib.layers.xavier_initializer_conv2d(dtype=dtype)
+        bias_initializer = tf.zeros_initializer(dtype=dtype)
+        fc_initializer = tf.contrib.layers.xavier_initializer(dtype=dtype)
+        def make_conv_layer_weights(weights, scope, k, filters_in, filters_out):
+            weights['{}/conv'.format(scope)] = tf.get_variable('{}/conv'.format(scope), [k, k, filters_in, filters_out], initializer=conv_initializer, dtype=dtype)
+            weights['{}/bias'.format(scope)] = tf.get_variable('{}/bias'.format(scope), [filters_out], initializer=bias_initializer, dtype=dtype)
+        def make_fc_layer_weights(weights, scope, dims_in, dims_out):
+            weights['{}/fc'.format(scope)] = tf.get_variable('{}/fc'.format(scope), [dims_in, dims_out], initializer=fc_initializer, dtype=dtype)
+            weights['{}/bias'.format(scope)] = tf.get_variable('{}/bias'.format(scope), [dims_out], initializer=bias_initializer, dtype=dtype)
+        for block_name in self.blocks:
+            if block_name == 'input':
+                make_conv_layer_weights(weights, block_name, k=3, filters_in=self.channels, filters_out=64)
+            elif 'res' in block_name:
+                j = int(block_name[-1])
+                last_block_filter = 64 if j == 0 else 64 * 2 ** (j-1)
+                this_block_filter = 64 if j == 0 else last_block_filter * 2
+                print(block_name, last_block_filter, this_block_filter)
+                for i in range(self.num_parts_per_res_block):
+                    make_conv_layer_weights(weights, '{}/part{}'.format(block_name, i), k=3, filters_in=64, filters_out=64)
+            elif block_name == 'output':
+                make_fc_layer_weights(weights, block_name, dims_in=512, dims_out=self.dim_output_train)
+        return weights
+
+    def forward_resnet224(self, inp, weights, prefix, reuse=False):
+
+        inp = tf.reshape(inp, [-1, self.img_size, self.img_size, self.channels])
+
+        for block_name in self.blocks:
+            if block_name == 'input':
+                conv = weights['{}/conv'.format(block_name)]
+                bias = weights['{}/bias'.format(block_name)]
+                inp = tf.nn.conv2d(inp, filter=conv, strides=[1, 2, 2, 1], padding="SAME") + bias
+            elif 'res' in block_name:
+                shortcut = inp
+                conv = weights['{}/shortcut/conv'.format(block_name)]
+                shortcut = tf.nn.conv2d(input=shortcut, filter=conv, strides=[1, 1, 1, 1], padding="SAME")
+                for part in range(self.num_parts_per_res_block):
+                    part_name = 'part{}'.format(part)
+                    scope = '{}/{}'.format(block_name, part_name)
+                    conv = weights['{}/{}/conv'.format(block_name, part_name)]
+                    bias = weights['{}/{}/bias'.format(block_name, part_name)]
+                    inp = bn_relu_conv_block(inp=inp, conv=conv, bias=bias, reuse=reuse, scope=scope)
+                inp = shortcut + inp
+            elif 'maxpool' in block_name:
+                inp = tf.nn.max_pool(inp, [1, 2, 2, 1], [1, 2, 2, 1], "VALID")
+            elif 'output' in block_name:
+                inp = tf.reduce_mean(inp, [1, 2])
+                fc = weights['{}/fc'.format(block_name)]
+                bias = weights['{}/bias'.format(block_name)]
+                inp = tf.matmul(inp, fc) + bias
+                if 'val' in prefix:
+                    inp = tf.gather(inp, tf.range(self.dim_output_val), axis=1)
+        return inp
+
+    def forward_resnet84(self, inp, weights, prefix, reuse=False):
+
+        inp = tf.reshape(inp, [-1, self.img_size, self.img_size, self.channels])
+
+        for block_name in self.blocks:
+            if block_name == 'input':
+                conv = weights['{}/conv'.format(block_name)]
+                bias = weights['{}/bias'.format(block_name)]
+                inp = tf.nn.conv2d(inp, filter=conv, strides=[1, 1, 1, 1], padding="SAME") + bias
+
+            elif 'res' in block_name:
+                shortcut = inp
+                for part in range(self.num_parts_per_res_block):
+                    part_name = 'part{}'.format(part)
+                    scope = '{}/{}'.format(block_name, part_name)
+                    conv = weights['{}/{}/conv'.format(block_name, part_name)]
+                    bias = weights['{}/{}/bias'.format(block_name, part_name)]
+                    inp = bn_relu_conv_block(inp=inp, conv=conv, bias=bias, reuse=reuse, scope=scope)
+                inp = shortcut + inp
+            elif 'maxpool' in block_name:
+                inp = tf.nn.max_pool(inp, [1, 2, 2, 1], [1, 2, 2, 1], "VALID")
+            elif 'output' in block_name:
+                inp = tf.reduce_mean(inp, [1, 2])
+                fc = weights['{}/fc'.format(block_name)]
+                bias = weights['{}/bias'.format(block_name)]
+                inp = tf.matmul(inp, fc) + bias
+                if 'val' in prefix:
+                    inp = tf.gather(inp, tf.range(self.dim_output_val), axis=1)
+        return inp
+
+    def wrap(self, inp, weights, prefix, reuse=False, scope=''):
+        unused = self.forward_resnet(inp, weights, prefix, reuse=False)
+        return self.forward_resnet(inp, weights, prefix, reuse=True)
+
+
+if __name__ == '__main__':
+    import ipdb
+
+    FLAGS = flags.FLAGS
+
+    ## Dataset/method options
+    flags.DEFINE_string('dataset', 'omniglot', 'omniglot or mnist or miniimagenet or celeba')
+    flags.DEFINE_integer('num_encoding_dims', -1, 'of unsupervised representation learning method')
+    flags.DEFINE_string('encoder', 'acai', 'acai or bigan or deepcluster or infogan')
+
+    ## Training options
+    flags.DEFINE_integer('metatrain_iterations', 30000, 'number of metatraining iterations.')
+    flags.DEFINE_integer('meta_batch_size', 8, 'number of tasks sampled per meta-update')
+    flags.DEFINE_float('meta_lr', 0.001, 'the base learning rate of the generator')
+    flags.DEFINE_float('update_lr', 0.05, 'step size alpha for inner gradient update.')
+    flags.DEFINE_integer('inner_update_batch_size_train', 1,
+                         'number of examples used for inner gradient update (K for K-shot learning).')
+    flags.DEFINE_integer('inner_update_batch_size_val', 5, 'above but for meta-val')
+    flags.DEFINE_integer('outer_update_batch_size', 5, 'number of examples used for outer gradient update')
+    flags.DEFINE_integer('num_updates', 5, 'number of inner gradient updates during training.')
+    flags.DEFINE_string('mt_mode', 'gtgt', 'meta-training mode (for sampling, labeling): gtgt or encenc')
+    flags.DEFINE_string('mv_mode', 'gtgt', 'meta-validation mode (for sampling, labeling): gtgt or encenc')
+    flags.DEFINE_integer('num_classes_train', 5, 'number of classes used in classification for meta-training')
+    flags.DEFINE_integer('num_classes_val', 5, 'number of classes used in classification for meta-validation.')
+    flags.DEFINE_float('margin', 0.0, 'margin for generating partitions using random hyperplanes')
+    flags.DEFINE_integer('num_partitions', 1, 'number of partitions, -1 for same as number of meta-training tasks')
+    flags.DEFINE_string('partition_algorithm', 'kmeans', 'hyperplanes or kmeans')
+    flags.DEFINE_integer('num_clusters', -1, 'number of clusters for kmeans')
+    flags.DEFINE_boolean('scaled_encodings', True, 'if True, use randomly scaled encodings for kmeans')
+    flags.DEFINE_boolean('on_encodings', False, 'if True, train MAML on top of encodings')
+    flags.DEFINE_integer('num_hidden_layers', 2, 'number of mlp hidden layers')
+    flags.DEFINE_integer('num_parallel_calls', 8, 'for loading data')
+    flags.DEFINE_integer('gpu', 7, 'CUDA_VISIBLE_DEVICES=')
+
+    ## Model options
+    flags.DEFINE_string('norm', 'batch_norm', 'batch_norm, layer_norm, or None')
+    flags.DEFINE_integer('num_filters', 32, 'number of filters for each conv layer')
+    flags.DEFINE_bool('conv', True, 'whether or not to use a convolutional network')
+    flags.DEFINE_bool('max_pool', False, 'Whether or not to use max pooling rather than strided convolutions')
+    flags.DEFINE_bool('stop_grad', False, 'if True, do not use second derivatives in meta-optimization (for speed)')
+
+    ## Logging, saving, and testing options
+    flags.DEFINE_bool('log', True, 'if false, do not log summaries, for debugging code.')
+    flags.DEFINE_string('logdir', './log', 'directory for summaries and checkpoints.')
+    flags.DEFINE_bool('resume', True, 'resume training if there is a model available')
+    flags.DEFINE_bool('train', True, 'True to train, False to test.')
+    flags.DEFINE_integer('test_iter', -1, 'iteration to load model (-1 for latest model)')
+    flags.DEFINE_bool('test_set', False, 'Set to true to test on the the test set, False for the validation set.')
+    flags.DEFINE_integer('log_inner_update_batch_size_val', -1,
+                         'specify log directory iubsv. (use to test with different iubsv)')
+    flags.DEFINE_float('train_update_lr', -1,
+                       'value of inner gradient step step during training. (use if you want to test with a different value)')
+    flags.DEFINE_bool('save_checkpoints', False, 'if True, save model weights as checkpoints')
+    flags.DEFINE_bool('debug', False, 'if True, use tf debugger')
+    flags.DEFINE_string('suffix', '', 'suffix for an exp_string')
+    flags.DEFINE_bool('from_scratch', False, 'fast-adapt from scratch')
+    flags.DEFINE_integer('num_eval_tasks', 1000, 'number of tasks to meta-test on')
+
+    # Imagenet
+    flags.DEFINE_string('input_type', 'images_84x84',
+                        'features or features_processed or images_fullsize or images_84x84')
+    flags.DEFINE_string('data_dir', '/data3/kylehsu/data', 'location of data')
+    flags.DEFINE_bool('resnet', False, 'use resnet architecture')
+    flags.DEFINE_integer('num_res_blocks', 5, 'number of resnet blocks')
+    flags.DEFINE_integer('num_parts_per_res_block', 2, 'number of bn-relu-conv parts in a res block')
+
+    FLAGS.resnet = True
+
+    maml = MAML(dim_input=3*84*84, dim_output_train=10, dim_output_val=5, test_num_updates=5)
+    maml.channels = 3
+    maml.img_size = 84
+    weights = maml.construct_resnet_weights()
+    input_ph = tf.placeholder(tf.float32)
+    unused = maml.forward_resnet(input_ph, weights, 'hi', reuse=False)
+
+
+
+
+    sess = tf.InteractiveSession()
+    sess.run(tf.global_variables_initializer())
+    input = np.ones((1, 84 * 84 * 3), dtype=np.float32)
+
+    y = sess.run(maml.forward_resnet(input_ph, weights, 'val', reuse=True), {input_ph: input})
+
+
+    ipdb.set_trace()
+    x=1
+
+
+
+
+
