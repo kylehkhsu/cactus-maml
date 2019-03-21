@@ -19,7 +19,7 @@ pip install -r requirements.txt
 ```
 
 ### Data
-The Omniglot splits with ACAI and BiGAN encodings used for the results in the paper are available [here](https://drive.google.com/open?id=1i6kEbySnR51jT3pW_60E3PGkIOKmxTfQ).
+The Omniglot splits with ACAI and BiGAN encodings and MNIST splits with ACAI encodings used for the results in the paper are available [here](https://drive.google.com/open?id=1_VCrehk8FXz4inMMb4u3ZYuRovHTfAoQ).
 Download and extract the archive's contents into this directory.
 
 Unfortunately, due to licensing issues, I am not at liberty to re-distribute the miniImageNet or CelebA datasets. The code for these datasets is still presented for posterity.
