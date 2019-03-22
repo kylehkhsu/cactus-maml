@@ -64,7 +64,7 @@ mujoco-py==0.5.7
 nbconvert==5.3.1
 nbformat==4.4.0
 networkx==2.1
-notebook==5.6.0
+notebook>=5.7.2
 numexpr==2.6.8
 numpy==1.14.5
 opencv-python==3.4.2.17
@@ -90,10 +90,10 @@ python-dateutil==2.7.3
 python-utils==2.3.0
 pytz==2018.5
 PyWavelets==1.0.0
-PyYAML==3.13
+pyyaml>=4.2b1
 pyzmq==17.1.2
 qtconsole==4.4.1
-requests==2.19.1
+requests>=2.20.0
 rsa==3.4.2
 s3transfer==0.1.13
 scikit-image==0.14.0
