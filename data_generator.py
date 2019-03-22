@@ -316,14 +316,17 @@ class DataGeneratorImageNet(object):
                              'gtgt': 'class_ind'}[mode]
             for file_path, info in tqdm(miniimagenet_path_to_info_dict.items()):
                 partition[info[class_ind_key]].append(file_path_to_ind[file_path])
-            ipdb.set_trace()
+            for cls, indices in partition.items():
+                partition[cls] = indices[:600]
             partitions.append(partition)
         print('Number of partitions: {}'.format(len(partitions)))
         print('Average number of clusters/classes: {}'.format(np.mean([len(partition.keys()) for partition in partitions])))
 
         def sample_task():
             if mode == 'semi':
-                p = [0.8, 0.2]  # 80% k-means task, 20% miniimagenet ground truth
+                assert len(partitions) == 2
+                assert 0 <= FLAGS.p_gtgt <= 1
+                p = [1 - FLAGS.p_gtgt, FLAGS.p_gtgt]
             else:
                 p = None
             while True:

@@ -74,9 +74,11 @@ flags.DEFINE_bool('resnet', False, 'use resnet architecture')
 flags.DEFINE_integer('num_res_blocks', 5, 'number of resnet blocks')
 flags.DEFINE_integer('num_parts_per_res_block', 2, 'number of bn-relu-conv parts in a res block')
 flags.DEFINE_bool('miniimagenet_only', False, 'only miniimagenet classes')
+flags.DEFINE_float('p_gtgt', 0.0, 'probability that a task is supervised miniimagenet')
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = str(FLAGS.gpu)
 logdir = FLAGS.logdir
+print(FLAGS.p_gtgt)
 
 def train(model, saver, sess, exp_string, data_generator, resume_itr=0):
     SUMMARY_INTERVAL = 100
@@ -267,6 +269,8 @@ def main():
                 exp_string += '.scaled'
         if FLAGS.mt_mode == 'encenc':
             exp_string += '.ned_' + str(FLAGS.num_encoding_dims)
+        elif FLAGS.mt_mode == 'semi':
+            exp_string += '.pgtgt_' + str(FLAGS.p_gtgt)
     exp_string += '.mt_' + FLAGS.mt_mode
     exp_string += '.mbs_' + str(FLAGS.meta_batch_size) + \
                   '.nct_' + str(FLAGS.num_classes_train) + \

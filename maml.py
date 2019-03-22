@@ -40,15 +40,10 @@ class MAML:
                     if FLAGS.input_type == 'images_84x84':
                         self.forward = self.forward_resnet84
                         self.construct_weights = self.construct_resnet_weights84
+                        assert FLAGS.num_parts_per_res_block == 2
+                        assert FLAGS.num_res_blocks == 4
                         self.num_parts_per_res_block = FLAGS.num_parts_per_res_block
-                        blocks = ['input']
-                        for i in range(FLAGS.num_res_blocks):
-                            blocks.append('res{}'.format(i))
-                            if i != FLAGS.num_res_blocks - 1:
-                                blocks.append('maxpool')
-                        blocks.append('output')
-                        self.blocks = blocks
-                        print('blocks', self.blocks)
+                        self.blocks = ['input', 'maxpool', 'res0', 'maxpool', 'res1', 'maxpool', 'res2', 'maxpool', 'res3', 'output']
                     elif FLAGS.input_type == 'images_224x224':
                         self.forward = self.forward_resnet224
                         self.construct_weights = self.construct_resnet_weights224
@@ -338,9 +333,10 @@ class MAML:
         conv_initializer = tf.contrib.layers.xavier_initializer_conv2d(dtype=dtype)
         bias_initializer = tf.zeros_initializer(dtype=dtype)
         fc_initializer = tf.contrib.layers.xavier_initializer(dtype=dtype)
-        def make_conv_layer_weights(weights, scope, k, filters_in, filters_out):
+        def make_conv_layer_weights(weights, scope, k, filters_in, filters_out, bias=True):
             weights['{}/conv'.format(scope)] = tf.get_variable('{}/conv'.format(scope), [k, k, filters_in, filters_out], initializer=conv_initializer, dtype=dtype)
-            weights['{}/bias'.format(scope)] = tf.get_variable('{}/bias'.format(scope), [filters_out], initializer=bias_initializer, dtype=dtype)
+            if bias:
+                weights['{}/bias'.format(scope)] = tf.get_variable('{}/bias'.format(scope), [filters_out], initializer=bias_initializer, dtype=dtype)
         def make_fc_layer_weights(weights, scope, dims_in, dims_out):
             weights['{}/fc'.format(scope)] = tf.get_variable('{}/fc'.format(scope), [dims_in, dims_out], initializer=fc_initializer, dtype=dtype)
             weights['{}/bias'.format(scope)] = tf.get_variable('{}/bias'.format(scope), [dims_out], initializer=bias_initializer, dtype=dtype)
@@ -349,11 +345,15 @@ class MAML:
                 make_conv_layer_weights(weights, block_name, k=3, filters_in=self.channels, filters_out=64)
             elif 'res' in block_name:
                 j = int(block_name[-1])
-                last_block_filter = 64 if j == 0 else 64 * 2 ** (j-1)
+                last_block_filter = 64 if j == 0 else 64 * 2 ** (j - 1)
                 this_block_filter = 64 if j == 0 else last_block_filter * 2
                 print(block_name, last_block_filter, this_block_filter)
+                make_conv_layer_weights(weights, '{}/shortcut'.format(block_name), k=1, filters_in=last_block_filter,
+                                        filters_out=this_block_filter, bias=False)
                 for i in range(self.num_parts_per_res_block):
-                    make_conv_layer_weights(weights, '{}/part{}'.format(block_name, i), k=3, filters_in=64, filters_out=64)
+                    make_conv_layer_weights(weights, '{}/part{}'.format(block_name, i), k=3,
+                                            filters_in=last_block_filter if i == 0 else this_block_filter,
+                                            filters_out=this_block_filter)
             elif block_name == 'output':
                 make_fc_layer_weights(weights, block_name, dims_in=512, dims_out=self.dim_output_train)
         return weights
@@ -398,9 +398,10 @@ class MAML:
                 conv = weights['{}/conv'.format(block_name)]
                 bias = weights['{}/bias'.format(block_name)]
                 inp = tf.nn.conv2d(inp, filter=conv, strides=[1, 1, 1, 1], padding="SAME") + bias
-
             elif 'res' in block_name:
                 shortcut = inp
+                conv = weights['{}/shortcut/conv'.format(block_name)]
+                shortcut = tf.nn.conv2d(input=shortcut, filter=conv, strides=[1, 1, 1, 1], padding="SAME")
                 for part in range(self.num_parts_per_res_block):
                     part_name = 'part{}'.format(part)
                     scope = '{}/{}'.format(block_name, part_name)
