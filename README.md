@@ -25,7 +25,7 @@ Download and extract the archive's contents into this directory.
 Unfortunately, due to licensing issues, I am not at liberty to re-distribute the miniImageNet or CelebA datasets. The code for these datasets is still presented for posterity.
 
 ### Usage
-You can find examples of scripts in ```/scripts```. Metrics can be visualized using Tensorboard. Evaluation results are saved to a .csv file in a run's log folder. All results were obtained using a single GPU.
+You can find representative templates of scripts in ```/scripts```. A good one to start with is ```/scripts/omniglot_kmeans.sh```. Metrics can be visualized using Tensorboard. Evaluation results are saved to a .csv file in a run's log folder. All results were obtained using a single GPU.
 
 ### Credits
 The unsupervised representations were computed using four open-source codebases from prior works.

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# This run reproduces the first two results on the first line of Table 3 in the paper.
 num_classes=5
 num_clusters=500
 num_partitions=2400

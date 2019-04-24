@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# This run reproduces line 4 of Table 3 in the paper.
 margin=1.2  # you can try 0
 num_partitions=2400 # calculated for 30000 iterations * 8 tasks per iteration / 100 tasks per partition
 python3 main.py \

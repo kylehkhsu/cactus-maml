@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# This run reproduces the first two results on the second-to-last line of Table 2 in the paper.
 python3 main.py \
     --dataset=omniglot --encoder=acai --partition_algorithm=kmeans \
     --save_checkpoints=False \

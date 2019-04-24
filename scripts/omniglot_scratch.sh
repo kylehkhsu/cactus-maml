@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# This run reproduces the second result on the first line of Table 1 in the paper.
 # Leverages MAML meta-test code to train from scratch.
 num_classes=5
 inner_update_batch_size_val=5

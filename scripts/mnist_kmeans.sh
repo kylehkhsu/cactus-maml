@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# This run reproduces line 4 of Table 7 in the paper.
 num_clusters=10
 num_partitions=100
 num_encoding_dims=256
