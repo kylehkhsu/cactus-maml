@@ -22,7 +22,7 @@ pip install -r requirements.txt
 The Omniglot splits with ACAI and BiGAN encodings, MNIST splits with ACAI encodings, and miniImageNet splits with DeepCluster encodings used for the results in the paper are available [here](https://drive.google.com/open?id=1SbJQQ56FqfJVgy2DMynR60IH_bQHjW5m).
 Download and extract the archive's contents into this directory.
 
-Unfortunately, due to licensing issues, I am not at liberty to re-distribute the miniImageNet or CelebA datasets. The code for these datasets is still presented for posterity.
+The CelebA dataset is not provided because of licensing issues, but code used for the CelebA experiments is still present.
 
 ### Usage
 You can find representative templates of scripts in ```/scripts```. A good one to start with is ```/scripts/omniglot_kmeans.sh```. Metrics can be visualized using Tensorboard. Evaluation results are saved to a .csv file in a run's log folder. All results were obtained using a single GPU.
